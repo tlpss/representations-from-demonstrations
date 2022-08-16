@@ -1,6 +1,6 @@
 channels:
+  - pytorch
   - conda-forge
-  - torch
 dependencies:
   - pytorch=1.12
   - cudatoolkit=10.2
@@ -11,4 +11,8 @@ dependencies:
     - stable-baselines3
     - pytorch-lightning
     - imageio
+    - albumentations
+    - timm
+    - pytest
+    - pre-commit
     - -e .

@@ -1,3 +1,8 @@
 .idea/
 data/**
 **.egg**
+**.pyc
+.vscode
+**.ckpt
+wandb/**
+lightning_logs/**
