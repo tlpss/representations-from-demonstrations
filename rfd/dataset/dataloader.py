@@ -6,8 +6,8 @@ from torch.utils.data import DataLoader, Dataset
 
 
 class RandomSplitDataModule(pl.LightningDataModule):
-    """ Taken from https://github.com/tlpss/keypoint-detection/blob/main/keypoint_detection/data/datamodule.py
-    """
+    """Taken from https://github.com/tlpss/keypoint-detection/blob/main/keypoint_detection/data/datamodule.py"""
+
     @staticmethod
     def add_argparse_args(parent_parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         """

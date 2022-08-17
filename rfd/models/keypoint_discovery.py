@@ -1,10 +1,10 @@
 from typing import Tuple
 
 import pytorch_lightning as pl
+import seaborn as sns
 import torch
 import torchvision
 from torch import nn
-import seaborn as sns 
 
 from rfd.models.backbones.unet import UnetBackbone
 from rfd.utils import get_logging_path
@@ -69,7 +69,7 @@ class KeypointDiscovery(pl.LightningModule):
 
     def forward(self, x):
         heatmaps = self.keypoint_detector(x)
-        keypoints = self.extract_keypoints_from_heatmap(heatmaps,device=self.device)
+        keypoints = self.extract_keypoints_from_heatmap(heatmaps, device=self.device)
         return keypoints
 
     def configure_optimizers(self):
@@ -83,13 +83,13 @@ class KeypointDiscovery(pl.LightningModule):
         source_heatmaps = self.keypoint_detector(sources)
         target_heatmaps = self.keypoint_detector(targets)
 
-        source_keypoints = self.extract_keypoints_from_heatmap(source_heatmaps,device=self.device)
-        target_keypoints = self.extract_keypoints_from_heatmap(target_heatmaps,device = self.device)
+        source_keypoints = self.extract_keypoints_from_heatmap(source_heatmaps, device=self.device)
+        target_keypoints = self.extract_keypoints_from_heatmap(target_heatmaps, device=self.device)
 
         # bring back to gaussians (differentiable!)
         img_shape = sources.shape[2:]
-        source_gaussian_heatmaps = self.gaussian_heatmap(img_shape, source_keypoints,device=self.device)
-        target_gaussian_heatmaps = self.gaussian_heatmap(img_shape, target_keypoints,device = self.device)
+        source_gaussian_heatmaps = self.gaussian_heatmap(img_shape, source_keypoints, device=self.device)
+        target_gaussian_heatmaps = self.gaussian_heatmap(img_shape, target_keypoints, device=self.device)
         # concat (src_kps, target_kps, source_img)
 
         decoder_input = torch.cat([sources, source_gaussian_heatmaps, target_gaussian_heatmaps], dim=1)
@@ -126,12 +126,12 @@ class KeypointDiscovery(pl.LightningModule):
         return loss
 
     @staticmethod
-    def extract_keypoints_from_heatmap(x: torch.Tensor, device = 'cpu') -> torch.Tensor:
+    def extract_keypoints_from_heatmap(x: torch.Tensor, device="cpu") -> torch.Tensor:
         # N x C x H x W -> N x C x 2 (x,y)
         # separable implementation according to formula in https://rll.berkeley.edu/dsae/dsae.pdf
 
         # spatial soft(arg)max
-        
+
         alpha = 0.02
         x = torch.exp(x / alpha)
         x = x / torch.sum(x, [-1, -2], keepdim=True)
@@ -150,10 +150,7 @@ class KeypointDiscovery(pl.LightningModule):
 
     @staticmethod
     def gaussian_heatmap(
-        image_size: Tuple[int, int],
-        centers: torch.Tensor,
-        sigma: float = 4,
-        device='cpu'
+        image_size: Tuple[int, int], centers: torch.Tensor, sigma: float = 4, device="cpu"
     ) -> torch.Tensor:
         """
         Creates a Gaussian blob heatmap for a single keypoint.
@@ -179,13 +176,13 @@ class KeypointDiscovery(pl.LightningModule):
 
         ## create gaussian around the centered 2D grids $ exp ( -0.5 (x**2 + y**2) / sigma**2)$
         heatmap = torch.exp(
-            -0.5
-            * (torch.square(u_grid) + torch.square(v_grid))
-            / torch.square(torch.tensor([sigma], device=device))
+            -0.5 * (torch.square(u_grid) + torch.square(v_grid)) / torch.square(torch.tensor([sigma], device=device))
         )
         return heatmap
 
-    def visualize(self, sources, source_heatmaps, target_heatmaps, target_reconstructions, targets, is_validation_step: bool):
+    def visualize(
+        self, sources, source_heatmaps, target_heatmaps, target_reconstructions, targets, is_validation_step: bool
+    ):
         # get keypoints
 
         num_samples = source_heatmaps.shape[0]
@@ -194,13 +191,19 @@ class KeypointDiscovery(pl.LightningModule):
         source_keypoints = self.extract_keypoints_from_heatmap(source_heatmaps)
         target_keypoints = self.extract_keypoints_from_heatmap(target_heatmaps)
 
-        keypoint_overlayed_source_images = self.overlay_images_with_keypoints(sources,source_keypoints)
+        keypoint_overlayed_source_images = self.overlay_images_with_keypoints(sources, source_keypoints)
         keypoint_overlayed_target_images = self.overlay_images_with_keypoints(targets, target_keypoints)
 
-
-        images = torch.cat([sources, keypoint_overlayed_source_images, target_reconstructions, keypoint_overlayed_target_images, targets])
+        images = torch.cat(
+            [
+                sources,
+                keypoint_overlayed_source_images,
+                target_reconstructions,
+                keypoint_overlayed_target_images,
+                targets,
+            ]
+        )
         grid = torchvision.utils.make_grid(images, n_row=num_samples)
-
 
         key = "validation" if is_validation_step else "training"
         self.logger.log_image(key=key, images=[grid], caption=["todo"])
@@ -210,36 +213,29 @@ class KeypointDiscovery(pl.LightningModule):
 
         # original - kp1 - kp2 - reconstruction - target GRID
 
-
-    @staticmethod    
+    @staticmethod
     def overlay_images_with_keypoints(images: torch.Tensor, keypoints: torch.Tensor) -> torch.Tensor:
 
-        # heatmaps N x C x H x W 
-        # keypoints N x C x 2 
+        # heatmaps N x C x H x W
+        # keypoints N x C x 2
 
         n_keypoints = keypoints.shape[1]
         image_size = images.shape[2:]
         alpha = 0.7
 
-        colors = torch.Tensor(sns.color_palette("husl",n_keypoints)) # C x 3
-        colors = colors.unsqueeze(0).unsqueeze(-1).unsqueeze(-1) # 1 x C x 3 x 1 x 1 
+        colors = torch.Tensor(sns.color_palette("husl", n_keypoints))  # C x 3
+        colors = colors.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)  # 1 x C x 3 x 1 x 1
 
-        heatmaps = KeypointDiscovery.gaussian_heatmap(image_size,keypoints,sigma= 2) # N x C x H x W 
-        heatmaps = heatmaps.unsqueeze(2) # N x C x 1 x H x W
+        heatmaps = KeypointDiscovery.gaussian_heatmap(image_size, keypoints, sigma=2)  # N x C x H x W
+        heatmaps = heatmaps.unsqueeze(2)  # N x C x 1 x H x W
 
         colorized_heatmaps = colors * heatmaps
-        combined_heatmap = torch.max(colorized_heatmaps,dim=1)[0] # N x 3 x H x W 
+        combined_heatmap = torch.max(colorized_heatmaps, dim=1)[0]  # N x 3 x H x W
 
-        overlayed_images = images * alpha  + combined_heatmap 
-        overlayed_images = torch.clip(overlayed_images,0.0,1.0)
+        overlayed_images = images * alpha + combined_heatmap
+        overlayed_images = torch.clip(overlayed_images, 0.0, 1.0)
 
         return overlayed_images
-
-
-
-   
-    
-
 
 
 if __name__ == "__main__":
@@ -272,12 +268,14 @@ if __name__ == "__main__":
     from rfd.dataset.demonstration_dataset import PredictFutureFrameDataset
     from rfd.utils import get_data_path
 
-    dataset = PredictFutureFrameDataset(get_data_path() / "push_demonstrations", 2)
+    dataset = PredictFutureFrameDataset(get_data_path() / "push_demonstrations", 5)
     datamodule = RandomSplitDataModule(dataset, 32, 0.1, 4)
     model = KeypointDiscovery(5)
 
-    wandb.init(project="learning-from-demonstrations", dir=get_logging_path(), tags = ["keypoint discovery"],mode="online")
+    wandb.init(
+        project="learning-from-demonstrations", dir=get_logging_path(), tags=["keypoint discovery"], mode="online"
+    )
     logger = WandbLogger(save_dir=get_logging_path())
-    trainer = pl.Trainer(max_epochs=30, gpus=1, overfit_batches = 1, logger=logger)
+    trainer = pl.Trainer(max_epochs=30, gpus=1, overfit_batches=20, logger=logger)
 
     trainer.fit(model, datamodule)
