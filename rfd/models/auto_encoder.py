@@ -6,6 +6,7 @@ import torch
 import wandb 
 import torchvision
 
+from rfd.utils import get_logging_path
 class Encoder(nn.Module):
 
     def __init__(self,
@@ -142,8 +143,8 @@ if __name__ == "__main__":
     datamodule = RandomSplitDataModule(dataset, 32, 0.1,4)
 
 
-    wandb.init(project = "learning-from-demonstrations")
-    logger = WandbLogger()
+    wandb.init(project="learning-from-demonstrations", dir=get_logging_path(), tags = ["autoencoder"])
+    logger = WandbLogger(save_dir=get_logging_path())
     trainer = pl.Trainer(max_epochs=30, gpus=1, logger = logger)
 
     trainer.fit(autoencoder, datamodule)

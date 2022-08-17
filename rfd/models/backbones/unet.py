@@ -1,17 +1,14 @@
 """
-Unet backbone for keypoint detection. 
+Unet backbone for keypoint detection.
 Taken from https://github.com/tlpss/keypoint-detection/blob/542b8b431c7f2f08de50e655cb1fc66cca4b69e2/keypoint_detection/models/backbones/unet.py
 """
 
+import abc
 import argparse
 import math
 
 import torch
 import torch.nn as nn
-import abc
-import argparse
-
-from torch import nn as nn
 
 
 class Backbone(nn.Module, abc.ABC):
@@ -25,6 +22,7 @@ class Backbone(nn.Module, abc.ABC):
     @staticmethod
     def add_to_argparse(parent_parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         return parent_parser
+
 
 class ResNetBlock(nn.Module):
     """
@@ -53,7 +51,8 @@ class ResNetBlock(nn.Module):
         out = self.relu(out)
 
         return out
-        
+
+
 class MaxPoolDownSamplingBlock(nn.Module):
     def __init__(self, n_channels_in, n_channels_out, kernel_size):
         super().__init__()
@@ -160,7 +159,7 @@ class UnetBackbone(Backbone):
 
 
 if __name__ == "__main__":
-    x = torch.rand(2, 3, 64, 64).to("cuda")
+    x = torch.rand(2, 3, 128, 64).to("cuda")
     model = UnetBackbone(3, 3, 3, 16, 3).to("cuda")
     print(model)
     y = model(x)

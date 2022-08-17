@@ -5,4 +5,4 @@ data/**
 .vscode
 **.ckpt
 wandb/**
-lightning_logs/**
+logging/**
