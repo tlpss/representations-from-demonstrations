@@ -33,8 +33,13 @@ class PredictFutureFrameDataset(Dataset):
         # add the tuples to the list of tuples
         for episode in sorted(os.listdir(root_dir)):
             episode_path = root_dir / episode
-            episode_frames = sorted(os.listdir(episode_path))
+
+            episode_frames = os.listdir(episode_path)
             episode_frames = [frame for frame in episode_frames if frame.split(".")[1] in ["jpg", "png"]]
+
+            # should have padded with zeros to avoid this
+            # but now need to extract the 'int' as str(10) < str(2) which messes up the order
+            episode_frames = sorted(episode_frames, key=lambda x: int(x.split(".")[0]))
             for index in range(len(episode_frames) - self.predict_n_steps):
                 img_t_path = episode_path / episode_frames[index]
                 img_tn_path = episode_path / episode_frames[index + self.predict_n_steps]
