@@ -39,11 +39,17 @@ class KeypointDetector(nn.Module):
 
 
 class KeypointDecoder(nn.Module):
-    def __init__(self, n_keypoints: int, n_channels=32) -> None:
+    def __init__(self, n_keypoints: int, n_channels=64) -> None:
         super().__init__()
-
+        self.img_network = nn.Sequential(nn.Conv2d(3, 2 * n_keypoints, kernel_size=3, padding="same"), nn.ReLU())
         self.network = nn.Sequential(
-            nn.Conv2d(3 + 2 * n_keypoints, n_channels, kernel_size=3, padding="same"),
+            nn.Conv2d(2 * n_keypoints + 2 * n_keypoints, n_channels, kernel_size=3, padding="same"),
+            nn.ReLU(),
+            nn.Conv2d(n_channels, n_channels, kernel_size=3, padding="same"),
+            nn.ReLU(),
+            nn.Conv2d(n_channels, n_channels, kernel_size=3, padding="same"),
+            nn.ReLU(),
+            nn.Conv2d(n_channels, n_channels, kernel_size=3, padding="same"),
             nn.ReLU(),
             nn.Conv2d(n_channels, n_channels, kernel_size=3, padding="same"),
             nn.ReLU(),
@@ -52,10 +58,12 @@ class KeypointDecoder(nn.Module):
             nn.Conv2d(n_channels, n_channels, kernel_size=3, padding="same"),
             nn.ReLU(),
             nn.Conv2d(n_channels, 3, kernel_size=3, padding="same"),
-            nn.Softmax(),
+            nn.Sigmoid(),
         )
 
-    def forward(self, x):
+    def forward(self, img, keypoints):
+        img_features = self.img_network(img)
+        x = torch.cat([img_features, keypoints], dim=1)
         return self.network(x)
 
 
@@ -73,7 +81,7 @@ class KeypointDiscovery(pl.LightningModule):
         return keypoints
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=3e-4)
+        return torch.optim.Adam(self.parameters(), lr=6e-4)
 
     def shared_step(self, batch, batch_idx, is_validation_step=False):
 
@@ -92,10 +100,10 @@ class KeypointDiscovery(pl.LightningModule):
         target_gaussian_heatmaps = self.gaussian_heatmap(img_shape, target_keypoints, device=self.device)
         # concat (src_kps, target_kps, source_img)
 
-        decoder_input = torch.cat([sources, source_gaussian_heatmaps, target_gaussian_heatmaps], dim=1)
+        gaussian_heatmaps = torch.cat([source_gaussian_heatmaps, target_gaussian_heatmaps], dim=1)
         # feed into decoder
 
-        reconstructed_targets = self.decoder(decoder_input)
+        reconstructed_targets = self.decoder(sources, gaussian_heatmaps)
 
         loss = nn.functional.mse_loss(targets, reconstructed_targets)
 
@@ -206,7 +214,11 @@ class KeypointDiscovery(pl.LightningModule):
         grid = torchvision.utils.make_grid(images, n_row=num_samples)
 
         key = "validation" if is_validation_step else "training"
-        self.logger.log_image(key=key, images=[grid], caption=["todo"])
+        self.logger.log_image(
+            key=key,
+            images=[grid],
+            caption=["top to bottom: source, source keypoints, reconstruction, target keypoints, targets"],
+        )
 
         # overlay keypoints on original images
         # get reconstruction
@@ -268,14 +280,17 @@ if __name__ == "__main__":
     from rfd.dataset.demonstration_dataset import PredictFutureFrameDataset
     from rfd.utils import get_data_path
 
-    dataset = PredictFutureFrameDataset(get_data_path() / "push_demonstrations", 5)
+    pl.seed_everything(2022)
+    dataset = PredictFutureFrameDataset(get_data_path() / "push_demonstrations", 7)
     datamodule = RandomSplitDataModule(dataset, 32, 0.1, 4)
-    model = KeypointDiscovery(5)
+    model = KeypointDiscovery(10)
 
     wandb.init(
         project="learning-from-demonstrations", dir=get_logging_path(), tags=["keypoint discovery"], mode="online"
     )
+    # wandb.watch(model.decoder,idx=0,log_freq=2)
+    # wandb.watch(model.keypoint_detector,idx=1, log_freq= 2)
     logger = WandbLogger(save_dir=get_logging_path())
-    trainer = pl.Trainer(max_epochs=30, gpus=1, overfit_batches=20, logger=logger)
+    trainer = pl.Trainer(max_epochs=50, gpus=1, logger=logger, log_every_n_steps=10)
 
     trainer.fit(model, datamodule)
